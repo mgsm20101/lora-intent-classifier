@@ -1,7 +1,7 @@
 """Loading, label mapping, and splitting for the intent classification data.
 
 The data itself is two fixed JSONL files (`data/intents.jsonl` for training,
-`data/eval_set.jsonl` for evaluation) copied verbatim from `01-intent-router` —
+`data/eval_set.jsonl` for evaluation) copied verbatim from the intent-router project —
 see `data/SOURCE.md`. This module does not create a new split; it loads the
 two files that already exist and derives the label vocabulary from the
 training rows.
