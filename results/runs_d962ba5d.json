@@ -1,0 +1,185 @@
+{
+  "model": "distilbert-base-multilingual-cased",
+  "device": "cpu",
+  "epochs": 12,
+  "batch_size": 16,
+  "max_len": 64,
+  "n_train": 96,
+  "n_eval": 32,
+  "n_classes": 8,
+  "chance_accuracy": 0.125,
+  "runs": [
+    {
+      "configuration": "head_only",
+      "trainable_params": 596744,
+      "total_params": 135330824,
+      "trainable_pct": 0.441,
+      "accuracy": 0.5625,
+      "correct": 18,
+      "n_eval": 32,
+      "per_class": {
+        "account_update": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "billing_issue": {
+          "correct": 4,
+          "total": 4,
+          "accuracy": 1.0
+        },
+        "cancel_subscription": {
+          "correct": 1,
+          "total": 4,
+          "accuracy": 0.25
+        },
+        "complaint": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        },
+        "greeting": {
+          "correct": 1,
+          "total": 4,
+          "accuracy": 0.25
+        },
+        "product_inquiry": {
+          "correct": 4,
+          "total": 4,
+          "accuracy": 1.0
+        },
+        "refund_request": {
+          "correct": 1,
+          "total": 4,
+          "accuracy": 0.25
+        },
+        "technical_support": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        }
+      },
+      "train_seconds": 129.0,
+      "checkpoint_bytes": 541350739,
+      "learning_rate": 0.0005
+    },
+    {
+      "configuration": "lora",
+      "trainable_params": 744200,
+      "total_params": 136075024,
+      "trainable_pct": 0.547,
+      "accuracy": 0.7188,
+      "correct": 23,
+      "n_eval": 32,
+      "per_class": {
+        "account_update": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "billing_issue": {
+          "correct": 4,
+          "total": 4,
+          "accuracy": 1.0
+        },
+        "cancel_subscription": {
+          "correct": 4,
+          "total": 4,
+          "accuracy": 1.0
+        },
+        "complaint": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        },
+        "greeting": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        },
+        "product_inquiry": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "refund_request": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "technical_support": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        }
+      },
+      "train_seconds": 267.3,
+      "checkpoint_bytes": 2987077,
+      "learning_rate": 0.0005
+    },
+    {
+      "configuration": "full",
+      "trainable_params": 135330824,
+      "total_params": 135330824,
+      "trainable_pct": 100.0,
+      "accuracy": 0.75,
+      "correct": 24,
+      "n_eval": 32,
+      "per_class": {
+        "account_update": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "billing_issue": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        },
+        "cancel_subscription": {
+          "correct": 4,
+          "total": 4,
+          "accuracy": 1.0
+        },
+        "complaint": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "greeting": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "product_inquiry": {
+          "correct": 4,
+          "total": 4,
+          "accuracy": 1.0
+        },
+        "refund_request": {
+          "correct": 3,
+          "total": 4,
+          "accuracy": 0.75
+        },
+        "technical_support": {
+          "correct": 2,
+          "total": 4,
+          "accuracy": 0.5
+        }
+      },
+      "train_seconds": 407.7,
+      "checkpoint_bytes": 541350739,
+      "learning_rate": 3e-05
+    }
+  ],
+  "seed": 20260923,
+  "library_versions": {
+    "torch": "2.14.0+cpu",
+    "transformers": "5.16.1",
+    "peft": "0.21.0"
+  },
+  "hardware": "Windows 11, 15.9 GB RAM, CPU training (torch +cpu)",
+  "timestamp": "2026-09-24T20:59:08.238778+00:00",
+  "source_commit_sha": "d962ba5db2f5144215a2847349b080554500c1a9",
+  "worktree_clean": true
+}
