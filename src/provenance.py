@@ -1,7 +1,7 @@
 """Git provenance and the refusal-to-run-on-a-dirty-tree guard.
 
 The measured run's results are only meaningful if they can be tied to an
-exact, inspectable commit. This module resolves that commit and the
+exact, inspectable commit. `build_provenance` resolves that commit and the
 worktree's clean/dirty state, and raises before training starts if the
 conditions are not met and the caller has not explicitly overridden them.
 """
@@ -9,7 +9,6 @@ conditions are not met and the caller has not explicitly overridden them.
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,64 +19,19 @@ class DirtyWorktreeError(RuntimeError):
     """Raised when the run would produce results with no fixed commit to cite."""
 
 
-@dataclass(frozen=True)
-class RepoState:
-    source_commit_sha: str | None
-    worktree_clean: bool
-    in_git_repo: bool
+def git_state(cwd: Path) -> tuple[str | None, bool]:
+    """Return (HEAD sha, worktree clean) for `cwd`; sha is None outside git."""
 
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
+        )
 
-def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def get_repo_state(cwd: Path) -> RepoState:
-    """Inspect `cwd` for a HEAD sha and a clean/dirty worktree.
-
-    Returns `in_git_repo=False` (rather than raising) when `cwd` is not
-    inside a git repository at all — the caller decides what to do with it.
-    """
-    head = _run_git(["rev-parse", "HEAD"], cwd)
+    head = git("rev-parse", "HEAD")
     if head.returncode != 0:
-        return RepoState(source_commit_sha=None, worktree_clean=False, in_git_repo=False)
-
-    status = _run_git(["status", "--porcelain"], cwd)
-    worktree_clean = status.returncode == 0 and status.stdout.strip() == ""
-    return RepoState(
-        source_commit_sha=head.stdout.strip(),
-        worktree_clean=worktree_clean,
-        in_git_repo=True,
-    )
-
-
-def require_clean_repo(cwd: Path, allow_dirty: bool = False) -> RepoState:
-    """Enforce the "measured run needs a fixed, clean commit" rule.
-
-    Raises `DirtyWorktreeError` when the tree is outside git or dirty and
-    `allow_dirty` is False. `allow_dirty=True` bypasses the check entirely
-    (used for local iteration, never for results meant to be cited).
-    """
-    state = get_repo_state(cwd)
-    if allow_dirty:
-        return state
-    if not state.in_git_repo:
-        raise DirtyWorktreeError(
-            f"{cwd} is not inside a git repository; results would have no "
-            "source_commit_sha to cite. Re-run with --allow-dirty to override."
-        )
-    if not state.worktree_clean:
-        raise DirtyWorktreeError(
-            "the worktree has uncommitted changes; results would not be "
-            "reproducible from a fixed commit. Commit or stash first, or "
-            "re-run with --allow-dirty to override."
-        )
-    return state
+        return None, False
+    status = git("status", "--porcelain")
+    return head.stdout.strip(), status.returncode == 0 and status.stdout.strip() == ""
 
 
 def library_versions() -> dict[str, str]:
@@ -93,13 +47,28 @@ def library_versions() -> dict[str, str]:
 
 
 def build_provenance(cwd: Path, seed: int, allow_dirty: bool = False) -> dict:
-    """Assemble the provenance block written alongside every measured run."""
-    state = require_clean_repo(cwd, allow_dirty=allow_dirty)
+    """Assemble the provenance block written alongside every measured run.
+
+    Raises `DirtyWorktreeError` when `cwd` is outside git or dirty, unless
+    `allow_dirty=True` (local iteration, never for results meant to be cited).
+    """
+    sha, clean = git_state(cwd)
+    if not allow_dirty and sha is None:
+        raise DirtyWorktreeError(
+            f"{cwd} is not inside a git repository; results would have no "
+            "source_commit_sha to cite. Re-run with --allow-dirty to override."
+        )
+    if not allow_dirty and not clean:
+        raise DirtyWorktreeError(
+            "the worktree has uncommitted changes; results would not be "
+            "reproducible from a fixed commit. Commit or stash first, or "
+            "re-run with --allow-dirty to override."
+        )
     return {
         "seed": seed,
         "library_versions": library_versions(),
         "hardware": HARDWARE_STRING,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "source_commit_sha": state.source_commit_sha,
-        "worktree_clean": state.worktree_clean,
+        "source_commit_sha": sha,
+        "worktree_clean": clean,
     }

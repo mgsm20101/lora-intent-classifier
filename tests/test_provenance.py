@@ -6,12 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.provenance import (
-    DirtyWorktreeError,
-    build_provenance,
-    get_repo_state,
-    require_clean_repo,
-)
+from src.provenance import DirtyWorktreeError, build_provenance, git_state
 
 
 def _fake_run(rev_parse_ok: bool, porcelain_output: str):
@@ -33,69 +28,47 @@ class _Completed:
         self.stdout = stdout
 
 
-def test_get_repo_state_reports_clean_repo() -> None:
-    with patch("subprocess.run", side_effect=_fake_run(rev_parse_ok=True, porcelain_output="")):
-        state = get_repo_state(Path("."))
-
-    assert state.in_git_repo is True
-    assert state.worktree_clean is True
-    assert state.source_commit_sha == "abc123def456"
+CLEAN = _fake_run(rev_parse_ok=True, porcelain_output="")
+DIRTY = _fake_run(rev_parse_ok=True, porcelain_output=" M src/train_cpu.py\n")
+NOT_A_REPO = _fake_run(rev_parse_ok=False, porcelain_output="")
 
 
-def test_get_repo_state_reports_dirty_repo() -> None:
-    with patch(
-        "subprocess.run",
-        side_effect=_fake_run(rev_parse_ok=True, porcelain_output=" M src/train_cpu.py\n"),
-    ):
-        state = get_repo_state(Path("."))
-
-    assert state.in_git_repo is True
-    assert state.worktree_clean is False
+def test_git_state_reports_clean_repo() -> None:
+    with patch("subprocess.run", side_effect=CLEAN):
+        assert git_state(Path(".")) == ("abc123def456", True)
 
 
-def test_get_repo_state_reports_not_a_repo() -> None:
-    with patch("subprocess.run", side_effect=_fake_run(rev_parse_ok=False, porcelain_output="")):
-        state = get_repo_state(Path("."))
-
-    assert state.in_git_repo is False
-    assert state.source_commit_sha is None
+def test_git_state_reports_dirty_repo() -> None:
+    with patch("subprocess.run", side_effect=DIRTY):
+        assert git_state(Path(".")) == ("abc123def456", False)
 
 
-def test_require_clean_repo_raises_on_dirty_tree() -> None:
-    with patch(
-        "subprocess.run",
-        side_effect=_fake_run(rev_parse_ok=True, porcelain_output=" M foo.py\n"),
-    ):
-        with pytest.raises(DirtyWorktreeError):
-            require_clean_repo(Path("."))
+def test_git_state_reports_not_a_repo() -> None:
+    with patch("subprocess.run", side_effect=NOT_A_REPO):
+        assert git_state(Path(".")) == (None, False)
 
 
-def test_require_clean_repo_raises_outside_git() -> None:
-    with patch("subprocess.run", side_effect=_fake_run(rev_parse_ok=False, porcelain_output="")):
-        with pytest.raises(DirtyWorktreeError):
-            require_clean_repo(Path("."))
+def test_build_provenance_raises_on_dirty_tree() -> None:
+    with patch("subprocess.run", side_effect=DIRTY):
+        with pytest.raises(DirtyWorktreeError, match="uncommitted changes"):
+            build_provenance(Path("."), seed=1)
 
 
-def test_require_clean_repo_allows_dirty_tree_with_override() -> None:
-    with patch(
-        "subprocess.run",
-        side_effect=_fake_run(rev_parse_ok=True, porcelain_output=" M foo.py\n"),
-    ):
-        state = require_clean_repo(Path("."), allow_dirty=True)
-
-    assert state.worktree_clean is False
+def test_build_provenance_raises_outside_git() -> None:
+    with patch("subprocess.run", side_effect=NOT_A_REPO):
+        with pytest.raises(DirtyWorktreeError, match="not inside a git repository"):
+            build_provenance(Path("."), seed=1)
 
 
-def test_require_clean_repo_passes_on_clean_tree() -> None:
-    with patch("subprocess.run", side_effect=_fake_run(rev_parse_ok=True, porcelain_output="")):
-        state = require_clean_repo(Path("."))
+def test_build_provenance_allows_dirty_tree_with_override() -> None:
+    with patch("subprocess.run", side_effect=DIRTY):
+        provenance = build_provenance(Path("."), seed=1, allow_dirty=True)
 
-    assert state.worktree_clean is True
-    assert state.source_commit_sha == "abc123def456"
+    assert provenance["worktree_clean"] is False
 
 
-def test_build_provenance_includes_expected_fields() -> None:
-    with patch("subprocess.run", side_effect=_fake_run(rev_parse_ok=True, porcelain_output="")):
+def test_build_provenance_on_clean_tree_includes_expected_fields() -> None:
+    with patch("subprocess.run", side_effect=CLEAN):
         provenance = build_provenance(Path("."), seed=20260923)
 
     assert provenance["seed"] == 20260923
