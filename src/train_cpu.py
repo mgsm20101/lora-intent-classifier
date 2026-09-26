@@ -178,7 +178,7 @@ def train_one(configuration: str, train_rows, eval_rows, labels, label_to_id, to
     result = evaluate(predicted, true, labels)
     size = _checkpoint_size(model, configuration)
     print(
-        f"    accuracy {result.correct}/{result.total} = {result.accuracy:.3f}   "
+        f"    accuracy {result['correct']}/{result['total']} = {result['accuracy']:.3f}   "
         f"{seconds:.1f}s   checkpoint {size / 1e6:.1f} MB",
         flush=True,
     )
@@ -188,10 +188,10 @@ def train_one(configuration: str, train_rows, eval_rows, labels, label_to_id, to
         trainable_params=trainable,
         total_params=total,
         trainable_pct=round(100 * trainable / total, 3),
-        accuracy=result.accuracy,
-        correct=result.correct,
-        n_eval=result.total,
-        per_class=result.per_class,
+        accuracy=result["accuracy"],
+        correct=result["correct"],
+        n_eval=result["total"],
+        per_class=result["per_class"],
         train_seconds=round(seconds, 1),
         checkpoint_bytes=size,
         learning_rate=lr,
