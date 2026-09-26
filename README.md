@@ -18,6 +18,60 @@ available in this environment is the `+cpu` wheel. Rather than publish
 projected numbers for an unrun path, this project was reduced to what is
 actually runnable and measured it properly.
 
+## Structure
+
+### Entry points
+
+| Command | Reads | Writes |
+|---|---|---|
+| `python -m src.train_cpu` (the measured run) | `data/intents.jsonl`, `data/eval_set.jsonl`, the base model from the local Hugging Face cache, `git rev-parse HEAD` / `git status` | `results/runs_<sha8>.json`; checkpoints under `runs/<configuration>/` (git-ignored) |
+| `python -m src.train_cpu --allow-dirty` | same | same, but skips the clean-tree check — local iteration only, never cited |
+| `python -m pytest -q` | `tests/`, `data/` | nothing (no model download, no network) |
+
+### Run flow
+
+```
+python -m src.train_cpu
+└─ src/train_cpu.py:main
+   ├─ src/provenance.py:build_provenance     HEAD sha + clean check; raises DirtyWorktreeError on a dirty tree
+   ├─ src/dataset.py:load_intent_data        data/intents.jsonl + data/eval_set.jsonl, label ids
+   ├─ src/train_cpu.py:train_one             once each for head_only, lora, full
+   │  ├─ _build → src/lora_setup.py:apply_configuration   fresh weights, choose trainable params
+   │  ├─ src/lora_setup.py:count_trainable_params
+   │  ├─ AdamW loop, 12 epochs
+   │  ├─ _predict → src/eval.py:evaluate                   accuracy + per-class on the 32 eval rows
+   │  └─ _checkpoint_size                                  writes runs/<configuration>/, returns bytes
+   ├─ src/train_cpu.py:assemble_payload      config + the three runs + provenance
+   └─ src/train_cpu.py:results_path          → results/runs_<sha8>.json
+```
+
+### Code map
+
+```
+src/
+  __init__.py        empty; makes `python -m src.train_cpu` work
+  train_cpu.py       the only entry point: trains the three configurations, writes the results JSON
+  lora_setup.py      LoRA config (r=8, alpha=16, q_lin+v_lin) and which parameters each configuration trains
+  dataset.py         loads the fixed train/eval JSONL split, derives label ids
+  eval.py            evaluate(): overall and per-class accuracy, a pure function
+  provenance.py      HEAD sha, clean/dirty worktree, library versions; refuses a dirty tree
+data/
+  intents.jsonl      96 training rows
+  eval_set.jsonl     32 eval rows (4 per class)
+  SOURCE.md          where the rows came from
+results/             runs_<sha8>.json, one file per measured run, named after its source commit
+tests/               unit tests, one file per src module; no model download, no network
+docs/results.md      full write-up of the measured run, including per-class results
+```
+
+### Read the code in this order
+
+1. `src/train_cpu.py` — `main`, then `train_one`: the whole experiment in one file.
+2. `src/lora_setup.py` — the only thing that differs between the three configurations.
+3. `src/eval.py` — how accuracy is scored.
+4. `src/provenance.py` — why a run refuses to start on a dirty tree.
+5. `src/dataset.py` — data loading; nothing surprising.
+
 ## Architecture
 
 Three configurations of the same model on the same data. The only variable is
@@ -39,25 +93,6 @@ not beat a frozen encoder, the low-rank updates would be decoration. `full`
 is the ceiling: if LoRA gets close to it while training a small fraction of
 the parameters and shipping a much smaller artifact, that is the entire
 operational argument for LoRA — measured, not quoted.
-
-Code layout:
-
-```
-src/
-  dataset.py       load the fixed train/eval JSONL split, derive label ids
-  lora_setup.py     LoRA config + per-configuration parameter wiring
-  eval.py           accuracy and per-class accuracy, pure functions
-  provenance.py     git commit/worktree state, refusal-to-run-dirty guard
-  train_cpu.py      entry point: trains all three configurations, writes results
-tests/              unit tests — no model download, no HF network
-data/
-  intents.jsonl     96 training examples (see data/SOURCE.md)
-  eval_set.jsonl    32 eval examples
-results/
-  runs_<sha8>.json  written by a measured run, named after its source commit
-docs/
-  results.md        write-up, filled in after the measured run
-```
 
 ## Run
 
@@ -93,35 +128,10 @@ CPU only (`torch 2.14.0+cpu`, `transformers 5.16.1`,
 | `lora` | 744,200 (0.55%) | **0.719** (23/32) | 0.55–0.84 | 267 s | 3.0 MB |
 | `full` | 135,330,824 (100.00%) | **0.750** (24/32) | 0.58–0.87 | 408 s | 541.4 MB |
 
-**Read with the intervals.** LoRA recovers most of the gap between training only the
-classifier head and training everything (23 vs 18 vs 24 correct of 32) while moving
-0.55% of the parameters and saving a 3 MB adapter instead of a 541 MB model. But with 32
-eval rows the intervals overlap heavily: the ordering is a direction, not a measured size,
-and LoRA vs full is one question apart.
-
-The same numbers came out of an earlier run of the same loop before this repository
-existed; with a fixed seed on CPU the run is deterministic.
-
-Per class (correct of 4):
-
-| class | head_only | lora | full |
-|---|---:|---:|---:|
-| account_update | 3/4 | 3/4 | 3/4 |
-| billing_issue | 4/4 | 4/4 | 2/4 |
-| cancel_subscription | 1/4 | 4/4 | 4/4 |
-| complaint | 2/4 | 2/4 | 3/4 |
-| greeting | 1/4 | 2/4 | 3/4 |
-| product_inquiry | 4/4 | 3/4 | 4/4 |
-| refund_request | 1/4 | 3/4 | 3/4 |
-| technical_support | 2/4 | 2/4 | 2/4 |
-
-No numbers are quoted here. This repository's own `src/train_cpu.py` will
-refuse to write a results file that isn't tied to a clean, committed
-worktree, and no run has been made against this repository's history at the
-time of writing. Once it has, the results table, per-class breakdown, and
-provenance (commit sha, worktree state, library versions, hardware,
-timestamp) live in [`docs/results.md`](docs/results.md) and
-`results/runs_<sha8>.json`.
+The Wilson intervals were computed by hand from `correct`/`n_eval` in the JSON; no code
+in this repository produces them. With 32 eval rows they overlap heavily: the ordering is
+a direction, not a measured size. Per-class results and the full reading are in
+[`docs/results.md`](docs/results.md).
 
 ## Limitations
 
@@ -148,11 +158,14 @@ timestamp) live in [`docs/results.md`](docs/results.md) and
 
 ## Reproduction
 
-`results/runs_<sha8>.json` records the model id, seed, epochs, batch size,
-max length, LoRA config, class count, chance accuracy, per-configuration
-results, and a provenance block (`source_commit_sha`, `worktree_clean`,
-library versions, hardware, timestamp) — enough to check the numbers against
-the exact conditions that produced them.
+`results/runs_<sha8>.json` records the model id, device, epochs, batch size, max
+length, train/eval row counts, class count, chance accuracy, per-configuration
+results (parameter counts, accuracy, per-class breakdown, train time, checkpoint
+size, learning rate), and a provenance block (`seed`, `library_versions`,
+`hardware`, `timestamp`, `source_commit_sha`, `worktree_clean`) — enough to check
+the numbers against the exact conditions that produced them. The LoRA
+hyperparameters (rank, alpha, dropout, target modules) are not in the JSON; they
+are fixed in `src/lora_setup.py` at the recorded commit.
 
 ```bash
 python -m src.train_cpu && cat results/runs_*.json
